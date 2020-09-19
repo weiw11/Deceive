@@ -19,8 +19,6 @@ namespace Deceive
         private string _status;
         private readonly string _statusFile = Path.Combine(Utils.DataDir, "status");
         private bool _connectToMuc = true;
-        private bool _createdFakePlayer;
-        private bool _sentIntroductionText;
 
         private SslStream _incoming;
         private SslStream _outgoing;
@@ -122,10 +120,9 @@ namespace Deceive
 #if DEBUG
             var closeIn = new MenuItem("Close incoming", (a, e) => { _incoming.Close(); });
             var closeOut = new MenuItem("Close outgoing", (a, e) => { _outgoing.Close(); });
-            var createFakePlayer = new MenuItem("Resend fake player", (a, e) => { CreateFakePlayer(); });
-            var sendTestMsg = new MenuItem("Send message", (a, e) => { SendMessageFromFakePlayer("Test"); });
+            var sendTestMsg = new MenuItem("Send message", (a, e) => {SendNotification("Test");});
 
-            _trayIcon.ContextMenu = new ContextMenu(new[] {aboutMenuItem, enabledMenuItem, typeMenuItem, mucMenuItem, closeIn, closeOut, createFakePlayer, sendTestMsg, quitMenuItem});
+            _trayIcon.ContextMenu = new ContextMenu(new[] {aboutMenuItem, enabledMenuItem, typeMenuItem, mucMenuItem, closeIn, closeOut, sendTestMsg, quitMenuItem});
 #else
             _trayIcon.ContextMenu = new ContextMenu(new[] {aboutMenuItem, enabledMenuItem, typeMenuItem, mucMenuItem, quitMenuItem});
 #endif
@@ -136,7 +133,6 @@ namespace Deceive
             _incoming = incoming;
             _outgoing = outgoing;
             _connected = true;
-            _createdFakePlayer = false;
 
             new Thread(IncomingLoop).Start();
             new Thread(OutgoingLoop).Start();
@@ -230,11 +226,6 @@ namespace Deceive
                         presence.Remove();
                     }
 
-                    if (!_createdFakePlayer)
-                    {
-                        CreateFakePlayer();
-                    }
-
                     if (targetStatus != "chat" || presence.Element("games")?.Element("league_of_legends")?.Element("st")?.Value != "dnd")
                     {
                         presence.Element("show")?.ReplaceNodes(targetStatus);
@@ -281,68 +272,10 @@ namespace Deceive
             }
         }
 
-        private async void CreateFakePlayer()
+        private void SendNotification(string message)
         {
-            _createdFakePlayer = true;
-
-            const string subscriptionMessage =
-                "<iq from='41c322a1-b328-495b-a004-5ccd3e45eae8@eu1.pvp.net' id='fake-player' type='set'>" +
-                "<query xmlns='jabber:iq:riotgames:roster'>" +
-                "<item jid='41c322a1-b328-495b-a004-5ccd3e45eae8@eu1.pvp.net' name='&#9;Deceive Active!' subscription='both' puuid='41c322a1-b328-495b-a004-5ccd3e45eae8'>" +
-                "<group priority='9999'>Deceive</group>" +
-                "<id name='&#9;Deceive Active!' tagline=''/> <lol name='&#9;Deceive Active!'/>" +
-                "</item>" +
-                "</query>" +
-                "</iq>";
-
-            const string presenceMessage =
-                "<presence from='41c322a1-b328-495b-a004-5ccd3e45eae8@eu1.pvp.net/RC-Deceive' id='fake-player-2'>" +
-                "<games>" +
-                "<keystone><st>chat</st><s.p>keystone</s.p></keystone>" +
-                "<league_of_legends><st>chat</st><s.p>league_of_legends</s.p><p>{&quot;pty&quot;:true}</p></league_of_legends>" + // No Region s.r keeps it in the main "League" category rather than "Other Servers" in every region with "Group Games & Servers" active 
-                "<valorant><st>chat</st><s.p>valorant</s.p><p>ewoJImlzVmFsaWQiOiB0cnVlLAoJInBhcnR5SWQiOiAiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwKCSJwYXJ0eUNsaWVudFZlcnNpb24iOiAicmVsZWFzZS0wMS4wNS1zaGlwcGluZy0xMC00NjAxMjkiCn0=</p></valorant>" +
-                "<bacon><st>chat</st><s.l>bacon_availability_online</s.l><s.p>bacon</s.p><s.t>1596633825489</s.t></bacon>" + // Timestamp needed or it will show offline
-                "</games>" +
-                "<show>chat</show>" +
-                "</presence>";
-
-            var bytes = Encoding.UTF8.GetBytes(subscriptionMessage);
-            _incoming.Write(bytes, 0, bytes.Length);
-            Trace.WriteLine("<!--DECEIVE TO RC-->" + subscriptionMessage);
-
-            await Task.Delay(200);
-
-            bytes = Encoding.UTF8.GetBytes(presenceMessage);
-            _incoming.Write(bytes, 0, bytes.Length);
-            Trace.WriteLine("<!--DECEIVE TO RC-->" + presenceMessage);
-
-
-            await Task.Delay(10000);
-
-            if (_sentIntroductionText) return;
-            _sentIntroductionText = true;
-
-            SendMessageFromFakePlayer("Welcome! Deceive is running and you are currently appearing " + _status +
-                                      ". Despite what the game client may indicate, you are appearing offline to your friends unless you manually disable Deceive.");
-            await Task.Delay(200);
-            SendMessageFromFakePlayer(
-                "If you want to invite others while being offline, you may need to disable Deceive for them to accept. You can enable Deceive again as soon as they are in your lobby.");
-            await Task.Delay(200);
-            SendMessageFromFakePlayer("To enable or disable Deceive, or to configure other settings, find Deceive in your tray icons.");
-            await Task.Delay(200);
-            SendMessageFromFakePlayer("Have fun!");
-        }
-
-        private void SendMessageFromFakePlayer(string message)
-        {
-            var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
-
-            var chatMessage =
-                $"<message from='41c322a1-b328-495b-a004-5ccd3e45eae8@eu1.pvp.net/RC-Deceive' stamp='{stamp}' id='fake-{stamp}' type='chat'><body>{message}</body></message>";
-
-            var bytes = Encoding.UTF8.GetBytes(chatMessage);
-            _incoming.Write(bytes, 0, bytes.Length);
-            Trace.WriteLine("<!--DECEIVE TO RC-->" + chatMessage);
+            _trayIcon.BalloonTipText = message;
+            _trayIcon.ShowBalloonTip(5000);
         }
 
         private void UpdateStatus(string newStatus)
@@ -353,11 +286,11 @@ namespace Deceive
 
             if (newStatus == "chat")
             {
-                SendMessageFromFakePlayer("You are now appearing online.");
+                SendNotification("You are now appearing online.");
             }
             else
             {
-                SendMessageFromFakePlayer("You are now appearing " + newStatus + ".");
+                SendNotification("You are now appearing " + newStatus + ".");
             }
         }
 
