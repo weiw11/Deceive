@@ -36,9 +36,6 @@ internal class MainController : ApplicationContext
     private string Status { get; set; } = null!;
     private string StatusFile { get; } = Path.Combine(Persistence.DataDir, "status");
     private bool ConnectToMuc { get; set; } = true;
-    private bool InsertedFakePlayer { get; set; }
-    private bool SentFakePlayerPresence { get; set; }
-    private bool SentIntroductionText { get; set; }
     private string? ValorantVersion { get; set; }
 
     private SslStream Incoming { get; set; } = null!;
@@ -154,8 +151,6 @@ internal class MainController : ApplicationContext
         Incoming = incoming;
         Outgoing = outgoing;
         Connected = true;
-        InsertedFakePlayer = false;
-        SentFakePlayerPresence = false;
 
         Task.Run(IncomingLoopAsync);
         Task.Run(OutgoingLoopAsync);
